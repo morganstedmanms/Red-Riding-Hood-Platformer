@@ -1,5 +1,6 @@
 import tkinter as tk
 import time
+import json
 from PIL import Image, ImageTk
 from App.TitleScreen import TitleScreen
 from App.Levels import level_data
@@ -10,6 +11,8 @@ from App.Enemy import Enemy
 import math
 import os
 import platform
+
+BEST_TIMES_FILE = "App/BestTimes.json"
 
 # Game Constants
 WIDTH, HEIGHT = 640, 480
@@ -86,6 +89,8 @@ class PlatformerGame:
         animate_player(self)
         animate_background(self)
         self.update_game()
+
+        self.best_times = self.load_best_times()
 
     def load_level(self, level):
         self.canvas.delete("all")
@@ -192,13 +197,68 @@ class PlatformerGame:
         self.timer_label.place_forget()  # Hide timer
         self.level_label.place_forget()  # Hide level label
         
+        self.update_best_times()
+        
+        # Prepare the summary text
         summary_text = "Game Complete!\n\nLevel Times:\n"
+        
         for i, time_taken in enumerate(self.level_times, 1):
-            summary_text += f"Level {i}: {time_taken} seconds\n"
-        summary_text += f"\nTotal Time: {total_time} seconds"
+            level_str = str(i)
+            best_time = self.best_times["levels"].get(level_str, None)
+            
+            # Calculate time difference and determine color
+            if best_time is None:
+                time_diff = ""
+                color = "black"
+            else:
+                time_diff = f" ({'+' if time_taken > best_time else ''}{round(time_taken - best_time, 2)})"
+                color = "green" if time_taken < best_time else "red"
+            
+            summary_text += f"Level {i}: {time_taken} seconds {time_diff}\n"
+        
+        best_total_time = self.best_times["total"]
+        total_time_diff = ""
+        total_time_color = "black"
+        if best_total_time is not None:
+            total_time_diff = f" ({'+' if total_time > best_total_time else ''}{round(total_time - best_total_time, 2)})"
+            total_time_color = "green" if total_time < best_total_time else "red"
 
+        summary_text += f"\nTotal Time: {total_time} seconds {total_time_diff}"
+
+        # Show the summary text on the completion screen
         summary_label = tk.Label(self.root, text=summary_text, font=("Arial", 16), bg="white", fg="black", justify="left")
         summary_label.place(x=WIDTH//2 - 100, y=HEIGHT//2 - 50)
+
+    def load_best_times(self):
+        """Load the best times from the best_times.json file."""
+        if os.path.exists(BEST_TIMES_FILE):
+            with open(BEST_TIMES_FILE, "r") as file:
+                return json.load(file)
+        else:
+            # If the file doesn't exist, initialize with empty times
+            return {"levels": {str(i): None for i in range(1, TOTAL_LEVELS + 1)}, "total": None}
+    
+    def save_best_times(self):
+        """Save the current best times to the best_times.json file."""
+        with open(BEST_TIMES_FILE, "w") as file:
+            json.dump(self.best_times, file, indent=4)
+    
+    def update_best_times(self):
+        """Update the best times for each level and total time if the player has set a new best time."""
+        total_time = sum(self.level_times)
+
+        for i, level_time in enumerate(self.level_times, 1):
+            level_str = str(i)
+            # Update if the current level time is better (lower) than the stored best time
+            if self.best_times["levels"][level_str] is None or level_time < self.best_times["levels"][level_str]:
+                self.best_times["levels"][level_str] = level_time
+        
+        # Update the total time if the current total time is better (lower) than the stored best time
+        if self.best_times["total"] is None or total_time < self.best_times["total"]:
+            self.best_times["total"] = total_time
+        
+        # Save the updated best times to file
+        self.save_best_times()
 
     def check_enemy_collision(self):
         for enemy in self.enemies:
@@ -269,6 +329,7 @@ class PlatformerGame:
         self.moving = False
         self.jumping = False
         self.direction = 1
+        self.level_times = []
         self.load_level(self.level)
 
 if __name__ == "__main__":
